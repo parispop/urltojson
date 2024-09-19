@@ -4,13 +4,14 @@ import tempfile
 import os
 from PyPDF2 import PdfReader
 from docx import Document
+import magic  # We'll use python-magic for better file type detection
 
 app = Flask(__name__)
 
 def download_file(url):
     response = requests.get(url)
     if response.status_code == 200:
-        with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(url)[1]) as temp_file:
             temp_file.write(response.content)
             return temp_file.name
     return None
@@ -41,12 +42,15 @@ def extract_text():
         return jsonify({"error": "Failed to download file"}), 400
 
     try:
-        if file_path.lower().endswith('.pdf'):
+        # Use python-magic to detect file type
+        file_type = magic.from_file(file_path, mime=True)
+        
+        if file_type == 'application/pdf':
             text = extract_text_from_pdf(file_path)
-        elif file_path.lower().endswith('.docx'):
+        elif file_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
             text = extract_text_from_docx(file_path)
         else:
-            return jsonify({"error": "Unsupported file format"}), 400
+            return jsonify({"error": f"Unsupported file format: {file_type}"}), 400
 
         os.unlink(file_path)  # Delete the temporary file
         return jsonify({"text": text})
@@ -55,5 +59,4 @@ def extract_text():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
     app.run(debug=True)
