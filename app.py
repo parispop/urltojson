@@ -63,4 +63,4 @@ def extract_text_from_url():
         return jsonify({"error": f"Error processing file: {str(e)}"}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=10000)
