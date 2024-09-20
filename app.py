@@ -1,62 +1,66 @@
-from flask import Flask, request, jsonify
-import requests
-import tempfile
 import os
-from PyPDF2 import PdfReader
+import requests
+from flask import Flask, request, jsonify
+from werkzeug.utils import secure_filename
+import PyPDF2
 from docx import Document
-import magic  # We'll use python-magic for better file type detection
 
 app = Flask(__name__)
 
-def download_file(url):
-    response = requests.get(url)
-    if response.status_code == 200:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=os.path.splitext(url)[1]) as temp_file:
-            temp_file.write(response.content)
-            return temp_file.name
-    return None
+UPLOAD_FOLDER = '/tmp'
+ALLOWED_EXTENSIONS = {'pdf', 'docx'}
 
-def extract_text_from_pdf(file_path):
-    with open(file_path, 'rb') as file:
-        pdf_reader = PdfReader(file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-    return text
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-def extract_text_from_docx(file_path):
-    doc = Document(file_path)
-    text = ""
-    for paragraph in doc.paragraphs:
-        text += paragraph.text + "\n"
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def extract_text(file_path):
+    file_extension = os.path.splitext(file_path)[1].lower()
+    
+    if file_extension == '.pdf':
+        with open(file_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text()
+    elif file_extension == '.docx':
+        doc = Document(file_path)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+    else:
+        raise ValueError("Unsupported file format")
+    
     return text
 
 @app.route('/extract', methods=['POST'])
-def extract_text():
+def extract_text_from_url():
     url = request.json.get('url')
     if not url:
-        return jsonify({"error": "URL is required"}), 400
-
-    file_path = download_file(url)
-    if not file_path:
-        return jsonify({"error": "Failed to download file"}), 400
+        return jsonify({"error": "No URL provided"}), 400
 
     try:
-        # Use python-magic to detect file type
-        file_type = magic.from_file(file_path, mime=True)
-        
-        if file_type == 'application/pdf':
-            text = extract_text_from_pdf(file_path)
-        elif file_type == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-            text = extract_text_from_docx(file_path)
-        else:
-            return jsonify({"error": f"Unsupported file format: {file_type}"}), 400
+        response = requests.get(url)
+        response.raise_for_status()
 
-        os.unlink(file_path)  # Delete the temporary file
-        return jsonify({"text": text})
+        filename = secure_filename(os.path.basename(url))
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
+        with open(file_path, 'wb') as file:
+            file.write(response.content)
+
+        if not allowed_file(filename):
+            os.remove(file_path)
+            return jsonify({"error": "Unsupported file format"}), 400
+
+        extracted_text = extract_text(file_path)
+        os.remove(file_path)
+
+        return jsonify({"text": extracted_text})
+
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Error downloading file: {str(e)}"}), 400
     except Exception as e:
-        os.unlink(file_path)  # Delete the temporary file
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"Error processing file: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
