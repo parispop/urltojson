@@ -3,4 +3,4 @@ requests
 PyPDF2
 python-docx
 gunicorn
-BeautifulSoup
+beautifulsoup4
