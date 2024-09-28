@@ -62,5 +62,34 @@ def extract_text_from_url():
     except Exception as e:
         return jsonify({"error": f"Error processing file: {str(e)}"}), 500
 
+@app.route('/htmlextract', methods=['GET', 'POST'])
+def extract_content():
+    if request.method == 'POST':
+        url = request.json.get('url')
+    else:  # GET method
+        url = request.args.get('url')
+    
+    if not url:
+        return jsonify({"error": "No URL provided"}), 400
+
+    try:
+        # Fetch the webpage content
+        response = requests.get(url)
+        response.raise_for_status()  # Raise an exception for bad status codes
+
+        # Parse the HTML content
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Extract the HTML content
+        html_content = str(soup)
+
+        # Return the content in a JSON object
+        return jsonify({"page_content": html_content})
+
+    except requests.RequestException as e:
+        return jsonify({"error": f"Error fetching URL: {str(e)}"}), 400
+    except Exception as e:
+        return jsonify({"error": f"Error processing request: {str(e)}"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
