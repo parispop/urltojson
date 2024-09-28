@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 import PyPDF2
 from docx import Document
+from bs4 import BeautifulSoup
 
 app = Flask(__name__)
 
